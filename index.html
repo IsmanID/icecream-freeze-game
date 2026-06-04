@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Project Ice Cream Gamification</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    /* Absolute constraint setups to bypass viewport calculation discrepancies */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background-color: #e0f2fe;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    /* Core Architectural Container */
+    .game-viewport {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+      background-color: #e0f2fe;
+      overflow: hidden;
+    }
+
+    /* Custom CSS clip paths for cross-compiler compatibility */
+    .cone-shape {
+      clip-path: polygon(0 0, 100% 0, 50% 100%);
+      -webkit-clip-path: polygon(0 0, 100% 0, 50% 100%);
+    }
+
+    /* Floating +FREEZE Damage Indicators */
+    @keyframes floatUp {
+      0% {
+        transform: translate(-50%, -50%) translateY(0) scale(0.8);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) translateY(-100px) scale(1.2);
+        opacity: 0;
+      }
+    }
+    .floating-indicator {
+      position: absolute;
+      pointer-events: none;
+      animation: floatUp 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+      z-index: 50;
+      font-weight: 800;
+      color: #2563eb;
+      text-shadow: 0 2px 4px rgba(255,255,255,0.8);
+    }
+
+    /* Programmatic Falling Drips */
+    @keyframes dropDown {
+      0% {
+        transform: translateY(0) scaleY(1);
+        opacity: 1;
+      }
+      70% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(280px) scaleY(0.6);
+        opacity: 0;
+      }
+    }
+    .ice-cream-drip {
+      position: absolute;
+      width: 12px;
+      height: 24px;
+      background-color: #f472b6;
+      border-radius: 0 0 12px 12px;
+      animation: dropDown 0.8s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards;
+      z-index: 15;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="game-viewport flex flex-col justify-between p-6">
+    
+    <div class="w-full text-center pt-4 z-20">
+      <h1 class="text-2xl font-black text-slate-700 tracking-wide uppercase">Save The Scoop!</h1>
+      <div class="flex justify-around items-center mt-3 bg-white/60 backdrop-blur-md rounded-2xl py-3 px-4 shadow-sm border border-white/40">
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</p>
+          <p id="score-display" class="text-2xl font-black text-pink-500">0</p>
+        </div>
+        <div class="h-8 w-[1px] bg-slate-300"></div>
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Best</p>
+          <p id="best-display" class="text-2xl font-black text-slate-700">0</p>
+        </div>
+        <div class="h-8 w-[1px] bg-slate-300"></div>
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Melt Multiplier</p>
+          <p id="multiplier-display" class="text-2xl font-black text-amber-500">1.0x</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="relative w-full flex-1 flex flex-col items-center justify-center z-10 my-4">
+      
+      <div class="relative w-64 h-96 flex flex-col items-center justify-end pb-8">
+        
+        <div id="scoop-wrapper" class="relative w-48 bg-pink-400 origin-bottom transition-all duration-75 ease-out" style="height: 160px; border-radius: 90px 90px 40px 40px;">
+          
+          <svg class="absolute bottom-[-15px] left-0 w-full h-8 text-pink-400" viewBox="0 0 100 20" preserveAspectRatio="none">
+            <path d="M0,0 Q12.5,15 25,0 T50,0 T75,0 T100,0 L100,20 L0,20 Z" fill="currentColor"></path>
+          </svg>
+
+          <div id="pool-overlay" class="absolute bottom-[-14px] left-[-16px] w-[224px] h-6 bg-pink-400 opacity-0 transition-opacity duration-300 rounded-full filter blur-[1px]"></div>
+
+          <div id="face-container" class="absolute top-12 left-0 w-full flex justify-center space-x-8 transition-transform duration-200">
+            <div class="w-4 h-4 bg-slate-800 rounded-full relative">
+              <div id="left-eye-dead" class="hidden absolute inset-0 text-slate-800 font-bold text-sm leading-none -mt-0.5 -ml-0.5">✕</div>
+            </div>
+            <div class="w-4 h-4 bg-slate-800 rounded-full relative">
+              <div id="right-eye-dead" class="hidden absolute inset-0 text-slate-800 font-bold text-sm leading-none -mt-0.5 -ml-0.5">✕</div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="w-32 h-44 bg-amber-300 cone-shape relative shadow-inner z-20 -mt-1">
+          <svg class="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+            <defs>
+              <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+                <path d="M 16 0 L 0 16 M 0 0 L 16 16" fill="none" stroke="#78350f" stroke-width="1.5"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+          </svg>
+        </div>
+
+        <div id="drip-spawn-zone" class="absolute inset-0 pointer-events-none z-10"></div>
+
+      </div>
+
+      <div class="w-full max-w-xs bg-slate-200 rounded-full h-3 p-[2px] border border-white shadow-inner">
+        <div id="health-bar" class="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400 rounded-full transition-all duration-75" style="width: 100%;"></div>
+      </div>
+
+    </div>
+
+    <div class="w-full max-w-xs mx-auto pb-4 z-20">
+      <button id="freeze-trigger-btn" class="w-full py-5 bg-gradient-to-b from-blue-400 to-blue-600 active:from-blue-500 active:to-blue-700 text-white font-black text-xl rounded-2xl shadow-[0_6px_0_0_#1d4ed8] active:shadow-[0_2px_0_0_#1d4ed8] transform active:translate-y-1 transition-all uppercase tracking-widest border border-blue-300 select-none outline-none">
+        🥶 FREEZE !
+      </button>
+    </div>
+
+  </div>
+
+  <div id="game-over-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-lg flex items-center justify-center p-6 z-50 animate-fade-in">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-8 text-center shadow-2xl border border-white/20 transform scale-95 transition-transform duration-300">
+      <div class="text-6xl mb-4">🫠</div>
+      <h2 class="text-3xl font-black text-slate-800 uppercase tracking-tight">Melted Away!</h2>
+      <p class="text-slate-500 font-medium mt-1">Your ice cream returned to the earth.</p>
+      
+      <div class="my-6 bg-slate-50 rounded-2xl p-4 border border-slate-100">
+        <div class="flex justify-between items-center py-2 border-b border-slate-200/60">
+          <span class="text-sm font-bold text-slate-400 uppercase">Final Score</span>
+          <span id="modal-final-score" class="text-2xl font-black text-pink-500">0</span>
+        </div>
+        <div class="flex justify-between items-center py-2 pt-3">
+          <span class="text-sm font-bold text-slate-400 uppercase">All-Time High</span>
+          <span id="modal-best-score" class="text-2xl font-black text-slate-700">0</span>
+        </div>
+      </div>
+
+      <button id="replay-trigger-btn" class="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-lg rounded-xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-transform uppercase tracking-wider">
+        Try Again Loop
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Configuration Specifications Parameters (Synchronized to System PRD requirements)
+      const GAME_CONFIG = {
+        INITIAL_HEALTH: 100.0,
+        DECAY_RATE_BASE: 0.08,      // Standard continuous reduction step per frame loop
+        ACCELERATION_FACTOR: 0.015,  // Exponential scaling factor per 10s step thresholds
+        TAP_POWER_BASE: 7.5,        // Linear injection magnitude addition per touch event register
+        MAX_HEALTH: 100.0,
+        MIN_HEIGHT_PX: 25,          // Bottom bounding structural scale clamp constraint
+        MAX_HEIGHT_PX: 160          // Upper functional limit height vector state
+      };
+
+      // Mechanical Engine Real-time Variables State Map
+      let iceCreamHealth = GAME_CONFIG.INITIAL_HEALTH;
+      let scoreTicks = 0;
+      let scoreCalculated = 0;
+      let highScore = parseInt(localStorage.getItem('ic_high_score') || '0', 10);
+      let activeGameState = 'START'; // Lifecycle States Tracker: 'START' | 'PLAYING' | 'GAME_OVER'
+      let frameLoopReference = null;
+      let timeElapsedInMs = 0;
+      let dynamicDecayRate = GAME_CONFIG.DECAY_RATE_BASE;
+      let lastDripTimestamp = 0;
+
+      // DOM Node Selectors Setup Bound Layer
+      const scoopWrapper = document.getElementById('scoop-wrapper');
+      const poolOverlay = document.getElementById('pool-overlay');
+      const faceContainer = document.getElementById('face-container');
+      const leftEyeDead = document.getElementById('left-eye-dead');
+      const rightEyeDead = document.getElementById('right-eye-dead');
+      const healthBar = document.getElementById('health-bar');
+      const scoreDisplay = document.getElementById('score-display');
+      const bestDisplay = document.getElementById('best-display');
+      const multiplierDisplay = document.getElementById('multiplier-display');
+      const dripSpawnZone = document.getElementById('drip-spawn-zone');
+      const freezeTriggerBtn = document.getElementById('freeze-trigger-btn');
+      const gameOverModal = document.getElementById('game-over-modal');
+      const modalFinalScore = document.getElementById('modal-final-score');
+      const modalBestScore = document.getElementById('modal-best-score');
+      const replayTriggerBtn = document.getElementById('replay-trigger-btn');
+
+      // Initialize persistent configurations data on launch
+      bestDisplay.innerText = highScore;
+
+      /**
+       * Primary Core Animation Processing Frame Loop Runtime Execution Engine Block
+       */
+      function executeGameTick(currentTimestamp) {
+        if (activeGameState !== 'PLAYING') return;
+
+        // Progress Score Tracking Metric Loops
+        scoreTicks++;
+        if (scoreTicks % 6 === 0) {
+          scoreCalculated++;
+          scoreDisplay.innerText = scoreCalculated;
+        }
+
+        // Calculate Time Increments & Dynamically Ramped Decay Velocities
+        timeElapsedInMs += 16.67; // Approx execution length per frame target (60fps)
+        const progressiveMultiplier = 1 + (Math.floor(timeElapsedInMs / 8000) * GAME_CONFIG.ACCELERATION_FACTOR * 10);
+        multiplierDisplay.innerText = progressiveMultiplier.toFixed(1) + 'x';
+        dynamicDecayRate = GAME_CONFIG.DECAY_RATE_BASE * progressiveMultiplier;
+
+        // Apply health breakdown transformations calculations parameters
+        iceCreamHealth -= dynamicDecayRate;
+
+        // Continuous Evaluation Check for Particle Drop Injections
+        if (iceCreamHealth < 60) {
+          const dripInterval = Math.max(200, iceCreamHealth * 12); // Speed up particle injection interval as system degrades
+          if (currentTimestamp - lastDripTimestamp > dripInterval) {
+            spawnDripParticle();
+            lastDripTimestamp = currentTimestamp;
+          }
+        }
+
+        // Execute Rendering Pipeline State Computations Updates
+        renderStatePipelineUpdate();
+
+        // Process Bounds Edge Checking Loop Constraints
+        if (iceCreamHealth <= 0) {
+          iceCreamHealth = 0;
+          triggerGameOverSequence();
+          return;
+        }
+
+        frameLoopReference = requestAnimationFrame(executeGameTick);
+      }
+
+      /**
+       * Rendering Matrix pipeline mapping health states to visual DOM mutations coordinates
+       */
+      function renderStatePipelineUpdate() {
+        const healthPercentage = iceCreamHealth / GAME_CONFIG.MAX_HEALTH;
+
+        // 1. Calculate dynamic geometric profile properties adjustments for scoop
+        const calculatedHeight = ((GAME_CONFIG.MAX_HEIGHT_PX - GAME_CONFIG.MIN_HEIGHT_PX) * healthPercentage) + GAME_CONFIG.MIN_HEIGHT_PX;
+        scoopWrapper.style.height = `${calculatedHeight}px`;
+
+        // Smooth adjustments for border-radius morphing parameters to look like melting
+        if (healthPercentage > 0.5) {
+          scoopWrapper.style.borderRadius = "90px 90px 40px 40px";
+          poolOverlay.style.opacity = "0";
+          faceContainer.style.transform = "translateY(0px)";
+        } else {
+          // Melts outward at the bottom as height scales down
+          scoopWrapper.style.borderRadius = "60px 60px 70px 70px";
+          poolOverlay.style.opacity = (1 - healthPercentage).toString();
+          // Shift face downwards into structural pool parameters safely
+          faceContainer.style.transform = `translateY(${(1 - healthPercentage) * 20}px)`;
+        }
+
+        // 2. Adjust dynamic color profiles to give feedback on status changes
+        if (healthPercentage < 0.3) {
+          scoopWrapper.style.backgroundColor = "#f472b6"; // Accent base warning threshold tints
+        } else if (healthPercentage < 0.6) {
+          scoopWrapper.style.backgroundColor = "#f472b6";
+        }
+
+        // 3. Update Health Tracker Display Bar Frame Elements
+        healthBar.style.width = `${healthPercentage * 100}%`;
+      }
+
+      /**
+       * Dynamic Generation Architecture for Falling Particle Systems
+       */
+      function spawnDripParticle() {
+        const drip = document.createElement('div');
+        drip.className = 'ice-cream-drip';
+        
+        // Randomly offset generation paths within scoop profile coordinates boundary box
+        const horizontalDistributionOffset = 45 + (Math.random() * 110); 
+        drip.style.left = `${horizontalDistributionOffset}px`;
+        
+        // Fix top placement vectors matching the lower boundary apron bounds
+        drip.style.bottom = '160px'; 
+
+        drip.addEventListener('animationend', () => {
+          drip.remove();
+        });
+
+        dripSpawnZone.appendChild(drip);
+      }
+
+      /**
+       * Interaction Event Capture Subroutines (Zero Mobile Latency Processing Layer)
+       */
+      function processUserTapEngagement(event) {
+        if (event) {
+          event.preventDefault(); // Defeats structural double-tap zooming & 300ms compiler feedback pauses
+        }
+
+        if (activeGameState === 'START') {
+          activeGameState = 'PLAYING';
+          lastDripTimestamp = performance.now();
+          frameLoopReference = requestAnimationFrame(executeGameTick);
+        }
+
+        if (activeGameState !== 'PLAYING') return;
+
+        // Apply health injection logic step modification
+        iceCreamHealth = Math.min(GAME_CONFIG.MAX_HEALTH, iceCreamHealth + GAME_CONFIG.TAP_POWER_BASE);
+        
+        // Process UI Refresh Updates immediately following touch event capture registers
+        renderStatePipelineUpdate();
+
+        // Spawn Floating feedback notifications
+        let interactionX = window.innerWidth / 2;
+        let interactionY = window.innerHeight / 2 - 40;
+
+        if (event && event.changedTouches && event.changedTouches.length > 0) {
+          interactionX = event.changedTouches[0].clientX;
+          interactionY = event.changedTouches[0].clientY;
+        } else if (event && event.clientX && event.clientY) {
+          interactionX = event.clientX;
+          interactionY = event.clientY;
+        }
+
+        triggerFloatingFeedbackText(interactionX, interactionY);
+      }
+
+      /**
+       * Procedural Floating Element Spawner Architecture
+       */
+      function triggerFloatingFeedbackText(posX, posY) {
+        const floatElement = document.createElement('div');
+        floatElement.className = 'floating-indicator text-sm md:text-base tracking-widest font-black';
+        floatElement.innerText = '+FREEZE';
+        floatElement.style.left = `${posX}px`;
+        floatElement.style.top = `${posY}px`;
+
+        floatElement.addEventListener('animationend', () => {
+          floatElement.remove();
+        });
+
+        document.body.appendChild(floatElement);
+      }
+
+      /**
+       * Lifecycle Termination Handlers Matrix Loop
+       */
+      function triggerGameOverSequence() {
+        activeGameState = 'GAME_OVER';
+        cancelAnimationFrame(frameLoopReference);
+
+        // Mutate Emotional Face Components Vector States
+        leftEyeDead.classList.remove('hidden');
+        rightEyeDead.classList.remove('hidden');
+
+        // High Score Record Persistent Compilation Logic Array
+        if (scoreCalculated > highScore) {
+          highScore = scoreCalculated;
+          localStorage.setItem('ic_high_score', highScore.toString());
+          bestDisplay.innerText = highScore;
+        }
+
+        // Hydrate and present Game Over Screen Modal
+        modalFinalScore.innerText = scoreCalculated;
+        modalBestScore.innerText = highScore;
+        gameOverModal.classList.remove('hidden');
+      }
+
+      /**
+       * Lifecycle Reinitialization System Reset Sequence Routine
+       */
+      function resetSystemVariablesToDefault() {
+        iceCreamHealth = GAME_CONFIG.INITIAL_HEALTH;
+        scoreTicks = 0;
+        scoreCalculated = 0;
+        timeElapsedInMs = 0;
+        dynamicDecayRate = GAME_CONFIG.DECAY_RATE_BASE;
+        
+        scoreDisplay.innerText = '0';
+        multiplierDisplay.innerText = '1.0x';
+
+        // Reset Emotional Face Node Attributes
+        leftEyeDead.classList.add('hidden');
+        rightEyeDead.classList.add('hidden');
+        scoopWrapper.style.backgroundColor = "#f472b6";
+
+        // Clean out dangling structural elements left in drip channels
+        dripSpawnZone.innerHTML = '';
+
+        // Hydrate initial configurations pipeline
+        renderStatePipelineUpdate();
+
+        gameOverModal.classList.add('hidden');
+        activeGameState = 'START';
+      }
+
+      // Explicit Mobile Hardware Touch Event Registers
+      freezeTriggerBtn.addEventListener('touchstart', processUserTapEngagement, { passive: false });
+      freezeTriggerBtn.addEventListener('mousedown', processUserTapEngagement);
+
+      // Desktop/Replay Activation Listeners Bound Hooks
+      replayTriggerBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        resetSystemVariablesToDefault();
+      });
+
+      // Global Layout Orientation Locking Override Security Matrix
+      window.addEventListener('resize', () => {
+        renderStatePipelineUpdate();
+      });
+
+      // Call initial UI composition state pipeline adjustments frame
+      renderStatePipelineUpdate();
+
+    })();
+  </script>
+</body>
+</html>
